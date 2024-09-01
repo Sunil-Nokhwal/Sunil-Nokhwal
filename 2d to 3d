@@ -1,0 +1,51 @@
+import cv2
+import numpy as np
+import pyvista as pv
+import tensorflow as tf
+from monodepth2 import networks
+
+def depth_to_3d(image_path, model_path='models/mono+stereo_640x192'):
+    # Load the pre-trained model
+    model = networks.ResnetEncoder(18, False)
+    model.load_weights(model_path)
+    
+    # Load and preprocess the image
+    image = cv2.imread(image_path)
+    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    image = np.expand_dims(image, 0)  # Add batch dimension
+    
+    # Predict depth
+    depth = model.predict(image)[0]
+    
+    # Normalize depth map
+    depth_normalized = cv2.normalize(depth, None, 0, 255, cv2.NORM_MINMAX)
+    depth_map_path = 'depth_map.png'
+    cv2.imwrite(depth_map_path, depth_normalized)
+    
+    # Generate 3D mesh
+    height, width = depth_normalized.shape
+    x, y = np.meshgrid(np.arange(width), np.arange(height))
+    
+    # Flatten arrays
+    x = x.flatten()
+    y = y.flatten()
+    z = depth_normalized.flatten()
+    
+    # Create point cloud and mesh
+    points = np.vstack((x, y, z)).T
+    mesh = pv.PolyData(points)
+    mesh.point_arrays['Depth'] = z
+    
+    # Delaunay triangulation
+    surface = mesh.delaunay_2d()
+    
+    # Plot and save the 3D model
+    plotter = pv.Plotter()
+    plotter.add_mesh(surface, scalars='Depth', cmap='plasma')
+    plotter.show()
+    
+    return depth_map_path
+
+# Example usage
+depth_map_path = depth_to_3d('input_image.jpg')
+print(f"Depth map saved to {depth_map_path}")
